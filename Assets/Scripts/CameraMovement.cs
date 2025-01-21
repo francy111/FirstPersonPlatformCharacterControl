@@ -16,6 +16,7 @@ public class CameraMovement : MonoBehaviour
     {
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+        Camera.main.fieldOfView = 100.0f;
     }
 
     void Update()

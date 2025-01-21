@@ -944,7 +944,10 @@ MonoBehaviour:
   speed: 0
   walkingSpeed: 7
   runningSpeed: 10
+  playerFeetPosition: {x: 0, y: 0, z: 0}
   grounded: 0
+  slopeAngle: 0
+  slideSpeed: 6
   jumpHeight: 9
   secondJump: 1
   ySpeed: 0

@@ -16,8 +16,12 @@ public class PlayerMovement : MonoBehaviour
     public float walkingSpeed;
     public float runningSpeed;
 
-    [Header("Ground Check")]
+    [Header("Ground Check & Slope handling")]
+    public Vector3 playerFeetPosition;
     public bool grounded;
+    public float slopeAngle;
+    public float slideSpeed;
+    public RaycastHit slopeRaycast;
 
     [Header("Jumping & Gravity Control")]
     public float jumpHeight = 9;
@@ -27,7 +31,7 @@ public class PlayerMovement : MonoBehaviour
 
     void Start()
     {
-
+        controller.slopeLimit = 46;
     }
 
     void Update()
@@ -36,11 +40,20 @@ public class PlayerMovement : MonoBehaviour
         grounded = GroundCheck();
         if (grounded)
         {
-            ySpeed = -2f; // Sweet spot, felt with heart <3
-            secondJump = true;
+            if (Mathf.Abs(slopeAngle) > 0.2f) 
+            {
+                ySpeed = -80.0f;
+            }
+            else
+            {
+                ySpeed = -2.0f; // Sweet spot, felt with heart <3
+            }
+            if(Mathf.Abs(slopeAngle) <= controller.slopeLimit) secondJump = true;
         }
         else
+        {
             ySpeed += g * Time.deltaTime;  // v = a * t [m/s = m/s^2 * s]
+        }
 
         float horizontalMovement = Input.GetAxisRaw("Horizontal"); // With horizontal i mean A and D (or <- and ->)
         float verticalMovement = Input.GetAxisRaw("Vertical"); // With horizontal i mean W and S (or ^ and v)
@@ -50,7 +63,7 @@ public class PlayerMovement : MonoBehaviour
 
         if (Input.GetKeyDown(jumpKey))
         {
-            if (grounded) // If we are grounded we are performing the first jump
+            if (grounded && Mathf.Abs(slopeAngle) <= controller.slopeLimit) // If we are grounded we are performing the first jump
             {
                 Jump();
             }
@@ -74,16 +87,35 @@ public class PlayerMovement : MonoBehaviour
          *      global 'x/z axis', so we would need to calculate the angle between the 
          *      'Z' and 'X' axis and the Y rotation, and rotate the final vector
          */
+
+
         move = transform.TransformDirection(
-                new Vector3(horizontalMovement, 0f, verticalMovement).normalized * speed
-            ) + Vector3.up * ySpeed;
+                new Vector3(horizontalMovement, 0f, verticalMovement)
+            );
+
+        // When we stand still on a steep slope, automatically go down
+        if (Mathf.Abs(slopeAngle) > controller.slopeLimit)
+        {
+            move = Vector3.ProjectOnPlane(move + Vector3.down * 2, slopeRaycast.normal).normalized * slideSpeed;
+        }
+        else
+        {
+            move = (Vector3.ProjectOnPlane(move, slopeRaycast.normal).normalized * speed);
+        }
+        move.y = ySpeed;
+        
         controller.Move(move * Time.deltaTime); // Automatically transforms the movement from being relative to the player to being absolute
         
     }
 
     private bool GroundCheck()
     {
-        return controller.isGrounded;
+        playerFeetPosition = controller.transform.position - new Vector3(0.0f, controller.height / 2, 0.0f);
+        Physics.Raycast(playerFeetPosition, Vector3.down, out slopeRaycast, 1f);
+        slopeAngle = Vector3.Angle(slopeRaycast.normal, Vector3.up);
+        
+        return (controller.isGrounded);
+
     }
 
     private void Jump()
