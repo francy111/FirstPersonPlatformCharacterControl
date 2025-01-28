@@ -1,16 +1,30 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class PlayerMovement : MonoBehaviour
 {
     public enum status { grounded, midAir, steepSlope };
 
+    [Header("Player components")]
     public CharacterController controller;
     public new Transform camera;
+
+    [Header("Keybinds")]
+    public KeyCode jumpButton = KeyCode.Space;
+    public KeyCode crouchButton = KeyCode.LeftControl;
+    public KeyCode stompButton = KeyCode.LeftControl;
+    public KeyCode boostButton = KeyCode.LeftShift;
+
+    [Header("Ground Collision Check")]
+    public float checkRadius;
+    public float checkDistance;
     public Vector3 playerHeadPosition;
     public Vector3 playerFeetPosition;
+
+    [Header("Status Update")]
     public status playerStatus;
     public float slopeAngle;
     public float maxSlopeAngle;
@@ -18,46 +32,65 @@ public class PlayerMovement : MonoBehaviour
     public float groundDistance;
     public float baseGroundDistanceTolerance;
     public float groundDistanceTolerance;
-    public float maxForwardSlopeDistance;
     public RaycastHit downSlopeHit;
 
+    [Header("Movement")]
+    public float debug;
+    public Vector3 move;
+
+    [Header("Horizontal movement")]
+    public Vector3 horizontalMovement;
     public float hSpeed;
     public float baseHSpeed;
-    public float crouchHSpeed;
-    public float boostHSpeed;
     public float maxHSpeed;
-    public float minimumSlideSpeed;
-    public float acceleration;
+    public float groundDeceleration;
     public float midAirSpeedMultiplier;
     public float steepSlopeSpeedMultiplier;
+
+    [Header("Vertical Movement")]
     public float vSpeed;
     public float vAcceleration;
     public float g;
-    public float stompingAcceleration;
-    public float slidingDeceleration;
-    public bool airJump;
-    public float lastJump;
+
+    [Header("Jumping")]
     public float jumpHeight;
-    public bool isStomping;
+    public float lastJump;
     public bool isJumping;
-    public bool isCrouching;
-    public bool isSliding;
+    public bool airJump;
     public float minJumpTime;
     public float groundMinJumpTime;
     public float slopeMinJumpTime;
-    public float checkRadius;
-    public float checkDistance;
 
+    [Header("Stomping")]
+    public float stompingAcceleration;
+    public bool isStomping;
+
+    [Header("Standing")]
     public float standingHeight;
     public Vector3 standingCenter;
+
+    [Header("Crouching")]
+    public float crouchHSpeed;
+    public bool isCrouching;
+    public bool canCrouch;
     public float crouchingHeight;
     public Vector3 crouchingCenter;
+
+    [Header("Sliding")]
+    public float minimumSlideSpeed;
+    public bool isSliding;
+    public float slidingDeceleration;
     public float slidingHeight;
     public Vector3 slidingCenter;
 
-    public Vector3 horizontalMovement;
-    public Vector3 move;
-    public Vector3 debug;
+    [Header("Boosting")]
+    public float boostHSpeed;
+    public float boostAcceleration;
+    public bool isBoosting;
+    public bool airBoostCharge;
+    public bool slideBoosting;
+
+
 
     public void Start()
     {
@@ -132,6 +165,16 @@ public class PlayerMovement : MonoBehaviour
          */
         horizontalMovement = transform.TransformDirection(horizontalMovement);
 
+
+        /* The player can carry momentum, for example keeping the speed reached during a boost
+         * when exiting it, however, it will start decaying 
+         */
+        if (!isBoosting && !isCrouching)
+        {
+            hSpeed = Mathf.Clamp(hSpeed + groundDeceleration * Time.deltaTime, baseHSpeed, maxHSpeed);
+        }
+
+
         /* For every state the player can be in there will be
          * different abilities he will be able to perform
          */
@@ -141,7 +184,7 @@ public class PlayerMovement : MonoBehaviour
             case status.grounded:
 
                 minJumpTime = groundMinJumpTime;
-
+                airBoostCharge = true;
                 /* We need to reset the player's vertical speed in order to have a reliable fall
                  * from platforms (we could 'farm' vertical speed to instantly reach the ground)
                  * However we do not want to reset it right after jumping (doing so would nullify it)
@@ -149,9 +192,8 @@ public class PlayerMovement : MonoBehaviour
                  */
                 if (Time.time > lastJump + minJumpTime)
                 {
-                    isJumping = false;
+                    StopJump();
                     airJump = true;
-                    vSpeed = 0;
                 }
 
                 /* Stomping ends when hitting a ground, so we flag the player as no longer stomping
@@ -160,75 +202,87 @@ public class PlayerMovement : MonoBehaviour
                  */
                 if (isStomping)
                 {
-                    isStomping = false;
+                    StopStomp();
                     vSpeed = 0;
-                    vAcceleration = g;
                 }
 
                 /* To make a double jump possible, we need a "first" jump, this
                  * is going to be performed from the ground
                  */
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (Input.GetKeyDown(jumpButton))
                 {
-                    if (isCrouching) // Decrouch if necessary
+                    if (isCrouching || isSliding) // Interrupt crouching or sliding if needed
                     {
                         StandUp();
-                        isCrouching = false;
                     }
-                    isJumping = true;
-                    lastJump = Time.time;
-                    vSpeed = jumpHeight;
+                    StartJump();
+                }
+
+                /* Boosting means gaining momentainly a very high speed
+                 * in the direction we are moving
+                 */
+                if (Input.GetKeyDown(boostButton))
+                {
+                    if (isCrouching || isSliding)
+                    {
+                        canCrouch = false;
+                        StandUp();
+                    }
+                    StartBoost(hSpeed);
+                }
+                else if (Input.GetKey(boostButton))
+                {
+                    if (isBoosting && !isSliding)
+                    {
+                        GroundBoost();
+                    } 
+                }
+                else if (Input.GetKeyUp(boostButton))
+                {
+                    StopBoost(hSpeed);
+                    canCrouch = true;
                 }
 
                 /* Crouching means just moving a little slower and with a lower camera
                  * Sliding means continue moving with a lower camera and gradually losing speed
                  * Depending on the current speed either one or the other will be performed
                  */
-                if (Input.GetKey(KeyCode.LeftControl))
+                if (Input.GetKey(crouchButton))
                 {
                     if (!isJumping)
                     {
-                        if (hSpeed >= minimumSlideSpeed)
+                        if (canCrouch)
                         {
-                            if (horizontalMovement.magnitude > 0)
+                            if (hSpeed >= minimumSlideSpeed && (horizontalMovement.magnitude > 0))
                             {
-                                isCrouching = false;
-                                isSliding = true;
                                 Slide();
-                                hSpeed += slidingDeceleration * Time.deltaTime;
                             }
                             else
                             {
-                                isSliding = false;
-                                isCrouching = true;
+                                if (isBoosting) // Stop boosting if needed
+                                {
+                                    StopBoost(hSpeed);
+                                }
                                 Crouch();
                             }
                         }
-                        else
-                        {
-                            isSliding = false;
-                            isCrouching = true;
-                            Crouch();
-                        }
                     }
-                    else
+                }
+                else if (Input.GetKeyUp(crouchButton))
+                {
+                    if (isBoosting)
                     {
-                        isSliding = false;
-                        isCrouching = false;
+                        float tmp = hSpeed;
+                        StandUp();
+                        hSpeed = tmp;
+                        canCrouch = true;
+                    }
+                    else 
+                    if (isCrouching || isSliding)
+                    {
                         StandUp();
                     }
                 }
-                else
-                {
-                    isSliding = false;
-                    isCrouching = false;
-                    StandUp();
-                }
-
-                /* Boosting means gaining momentainly a very high speed
-                 * in the direction we are moving
-                 */
-                if (Input.GetKeyDown(KeyCode.LeftShift)) { }
 
                 /* We rotate the directional movement versor to be parallel to the slope we are walking on
                  * in the direction we are moving
@@ -242,23 +296,20 @@ public class PlayerMovement : MonoBehaviour
                 /* While mid air we continuously apply gravity
                  * v = a * <d>t 
                  */
-                vSpeed += vAcceleration * Time.deltaTime;
+                vSpeed = vSpeed + vAcceleration * Time.deltaTime;
 
                 /* To make a double jump possible, we give the opportunity to jump
                  * once from the ground, and once mid air, as well as on slopes
                  */
-                if (Input.GetKeyDown(KeyCode.Space)) 
+                if (Input.GetKeyDown(jumpButton)) 
                 {
                     if (airJump)
                     {
-                        isJumping = true;
                         airJump = false;
-                        lastJump = Time.time;
-                        vSpeed = jumpHeight;
+                        StartJump();
                         if (isStomping) //Interrupt stomp if needed
                         {
-                            isStomping = false;
-                            vAcceleration = g;
+                            StopStomp();
                         }
                     }
                 }
@@ -267,21 +318,47 @@ public class PlayerMovement : MonoBehaviour
                  * falling to the ground below us, not only under the effect
                  * of gravity but another acceleration as well
                  */
-                if (Input.GetKeyDown(KeyCode.LeftControl)) 
+                if (Input.GetKeyDown(stompButton)) 
                 {
-                    isStomping = true;
+                    StartStomp();
                     if (isJumping) // Interrupt jump if needed
-                    { 
-                        isJumping = false; 
-                        vSpeed = 0; 
+                    {
+                        StopJump(); 
                     }
-                    vAcceleration = g + stompingAcceleration;
+                    if (isBoosting) // Interrupt boost if needed
+                    {
+                        StopBoost(hSpeed);
+                    }
                 }
 
                 /* Boosting means gaining momentainly a very high speed
                  * in the direction we are moving
                  */
-                if (Input.GetKeyDown(KeyCode.LeftShift)) { }
+                if (Input.GetKeyDown(boostButton))
+                {
+                    if (airBoostCharge)
+                    {
+                        airBoostCharge = false;
+                        canCrouch = false;
+                        if (isStomping) // Interrupt stomping if needed
+                        {
+                            StopStomp();
+                        }
+                        StartBoost(hSpeed);
+                    }
+                }
+                if (Input.GetKey(boostButton)) 
+                {
+                    if (isBoosting)
+                    {
+                        AirBoost(hSpeed);
+                    }
+                }
+                if (Input.GetKeyUp(boostButton)) 
+                {
+                    StopBoost(hSpeed);
+                    canCrouch = true;
+                }
 
                 move = (Vector3.up * vSpeed) + (isStomping ? Vector3.zero : horizontalMovement * hSpeed * midAirSpeedMultiplier);
                 break;
@@ -297,8 +374,10 @@ public class PlayerMovement : MonoBehaviour
                  */
                 if (isJumping && Time.time > lastJump + minJumpTime)
                 {
-                    isJumping = false;
-                    vSpeed = 0;
+                    StopJump();
+                }
+                if (isBoosting) {
+                    StopBoost(hSpeed);
                 }
 
                 /* While on a steep slope we want the player to continuously slide it
@@ -306,23 +385,20 @@ public class PlayerMovement : MonoBehaviour
                  * the player go down, as he slides on the slope, we only consider the parallel
                  * component of g with respect to the slope
                  */
-                vSpeed += vAcceleration * Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * Time.deltaTime;
+                vSpeed = vSpeed + vAcceleration * Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * Time.deltaTime;
 
                 /* To make a double jump possible, we give the opportunity to jump
                  * once from the ground, and once mid air, as well as on slopes
                  */
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (Input.GetKeyDown(jumpButton))
                 {
                     if (airJump)
                     {
-                        isJumping = true;
                         airJump = false;
-                        lastJump = Time.time;
-                        vSpeed = jumpHeight;
+                        StartJump();
                         if (isStomping)// Interrupt stomp if needed
                         {
-                            isStomping = false;
-                            vAcceleration = g;
+                            StopStomp();
                         }
                     }
                 }
@@ -331,15 +407,13 @@ public class PlayerMovement : MonoBehaviour
                  * falling to the ground below us, not only under the effect
                  * of gravity but another acceleration as well
                  */
-                if (Input.GetKeyDown(KeyCode.LeftControl))
+                if (Input.GetKeyDown(stompButton))
                 {
-                    isStomping = true;
+                    StartStomp();
                     if (isJumping) // Interrupt jump if needed
                     {
-                        isJumping = false;
-                        vSpeed = 0;
+                        StopJump();
                     }
-                    vAcceleration = g + stompingAcceleration;
                 }
 
                 horizontalMovement = Vector3.ProjectOnPlane(horizontalMovement, downSlopeHit.normal).normalized;
@@ -360,14 +434,6 @@ public class PlayerMovement : MonoBehaviour
         controller.Move(move * Time.deltaTime);
     }
 
-    public void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.red;
-        Gizmos.DrawSphere(playerHeadPosition, checkRadius);
-        Gizmos.DrawSphere(playerFeetPosition, checkRadius);
-        Gizmos.DrawSphere(playerFeetPosition + Vector3.down * checkDistance, checkRadius);
-    }
-
     private bool GroundCheck()
     {
         playerHeadPosition = controller.transform.position + Vector3.up * (checkDistance - checkRadius);
@@ -377,6 +443,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void StandUp()
     {
+        isSliding = false;
+        isCrouching = false;
         controller.height = standingHeight;
         controller.center = standingCenter;
         camera.localPosition = Vector3.up * 0.5f;
@@ -385,6 +453,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void Crouch()
     {
+        isSliding = false;
+        isCrouching = true;
         controller.height = crouchingHeight;
         controller.center = crouchingCenter;
         camera.localPosition = Vector3.up * 0.25f;
@@ -393,8 +463,65 @@ public class PlayerMovement : MonoBehaviour
 
     private void Slide()
     {
+        isSliding = true;
+        isCrouching = false;
         controller.height = slidingHeight;
         controller.center = slidingCenter;
         camera.localPosition = Vector3.zero;
+        hSpeed += slidingDeceleration * Time.deltaTime;
+    }
+
+    private void StartBoost(float currentSpeed)
+    {
+        isBoosting = true;
+        hSpeed = Mathf.Max(currentSpeed, boostHSpeed);
+    }
+    private void GroundBoost()
+    {
+        if (horizontalMovement.magnitude <= 0)
+        {
+            horizontalMovement = transform.TransformDirection(Vector3.forward);
+        }
+        hSpeed = Mathf.Clamp(hSpeed + boostAcceleration * Time.deltaTime, 0.0f, maxHSpeed);
+    }
+
+    private void AirBoost(float currentSpeed)
+    {
+        if (horizontalMovement.magnitude <= 0)
+        {
+            horizontalMovement = transform.TransformDirection(Vector3.forward);
+        }
+        hSpeed = currentSpeed;
+    }
+
+    private void StopBoost(float currentSpeed)
+    {
+        hSpeed = Mathf.Max(currentSpeed, baseHSpeed);
+        isBoosting = false;
+    }
+
+    private void StartStomp()
+    {
+        isStomping = true;
+        vAcceleration = g + stompingAcceleration;
+        hSpeed = baseHSpeed;
+    }
+
+    private void StopStomp()
+    {
+        vAcceleration = g;
+        isStomping = false;
+    }
+
+    private void StartJump()
+    {
+        isJumping = true;
+        lastJump = Time.time;
+        vSpeed = jumpHeight;
+    }
+    private void StopJump()
+    {
+        vSpeed = 0;
+        isJumping = false;
     }
 }

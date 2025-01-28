@@ -1259,6 +1259,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   controller: {fileID: 1054987000}
   camera: {fileID: 963194228}
+  jumpButton: 32
+  crouchButton: 306
+  stompButton: 306
+  boostButton: 304
+  checkRadius: 0
+  checkDistance: 0
   playerHeadPosition: {x: 0, y: 0, z: 0}
   playerFeetPosition: {x: 0, y: 0, z: 0}
   playerStatus: 0
@@ -1268,42 +1274,44 @@ MonoBehaviour:
   groundDistance: 0
   baseGroundDistanceTolerance: 0.1
   groundDistanceTolerance: 0
-  maxForwardSlopeDistance: 0
+  debug: 0
+  move: {x: 0, y: 0, z: 0}
+  horizontalMovement: {x: 0, y: 0, z: 0}
   hSpeed: 0
-  baseHSpeed: 10
-  crouchHSpeed: 6
-  boostHSpeed: 0
-  maxHSpeed: 0
-  minimumSlideSpeed: 11
-  acceleration: 0
+  baseHSpeed: 8
+  maxHSpeed: 20
+  groundDeceleration: -1
   midAirSpeedMultiplier: 1
   steepSlopeSpeedMultiplier: 0
   vSpeed: 0
   vAcceleration: 0
   g: -13
-  stompingAcceleration: -20
-  slidingDeceleration: -0.2
-  airJump: 0
-  lastJump: 0
   jumpHeight: 9
-  isStomping: 0
+  lastJump: 0
   isJumping: 0
-  isCrouching: 0
-  isSliding: 0
+  airJump: 0
   minJumpTime: 0.1
   groundMinJumpTime: 0.1
   slopeMinJumpTime: 0.1
-  checkRadius: 0
-  checkDistance: 0
+  stompingAcceleration: -20
+  isStomping: 0
   standingHeight: 0
   standingCenter: {x: 0, y: 0, z: 0}
+  crouchHSpeed: 6
+  isCrouching: 0
+  canCrouch: 1
   crouchingHeight: 0
   crouchingCenter: {x: 0, y: 0, z: 0}
+  minimumSlideSpeed: 7
+  isSliding: 0
+  slidingDeceleration: -0.2
   slidingHeight: 0
   slidingCenter: {x: 0, y: 0, z: 0}
-  horizontalMovement: {x: 0, y: 0, z: 0}
-  move: {x: 0, y: 0, z: 0}
-  debug: {x: 0, y: 0, z: 0}
+  boostHSpeed: 15
+  boostAcceleration: 1
+  isBoosting: 0
+  airBoostCharge: 0
+  slideBoosting: 0
 --- !u!1 &1138740541
 GameObject:
   m_ObjectHideFlags: 0
